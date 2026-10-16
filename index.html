@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>How Physics Simulations Run on Supercomputers</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#05070d;color:#e9eefb;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+#stage{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(1200px 700px at 50% -15%,#16203a,#05070d 62%)}
+#deck{width:1280px;height:720px;position:relative;transform-origin:center}
+.slide{position:absolute;inset:0;padding:40px 56px 56px;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .22s}
+.slide.on{opacity:1;pointer-events:auto}
+.k{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#4fd1c5;font-weight:700;margin-bottom:8px}
+h1{font-size:50px;line-height:1.1;font-weight:700;letter-spacing:-.02em}
+h2{font-size:29px;line-height:1.18;font-weight:650;margin-bottom:18px;letter-spacing:-.015em}
+h3{font-size:15px;font-weight:650;margin-bottom:6px}
+h4{font-size:13px;font-weight:650;margin-bottom:3px}
+p{font-size:14.5px;line-height:1.55;color:#8ea0c4}
+sup{font-size:.65em}
+.tw{display:flex;flex-direction:column;justify-content:center;height:100%;max-width:880px}
+.lede{font-size:19px;color:#8ea0c4;margin-top:16px}
+.rule{width:70px;height:3px;background:#4fd1c5;border-radius:2px;margin:24px 0 14px}
+.meta{font-size:13px;color:#5f7196}
+.punch{margin-top:auto;font-size:16.5px;color:#e9eefb;border-left:3px solid #4fd1c5;padding:11px 0 11px 15px;background:linear-gradient(90deg,rgba(79,209,197,.09),transparent 70%)}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+.card{background:#111827;border:1px solid #243049;border-radius:12px;padding:15px 16px}
+.card p{font-size:13px;line-height:1.5}
+.tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#5f7196;font-weight:700;margin-bottom:5px}
+.codes{font-size:11.5px;color:#7dd3fc;font-family:ui-monospace,Menlo,monospace;margin-top:7px}
+.eq{font-family:ui-monospace,Menlo,monospace;font-size:20px;background:#161f33;border:1px solid #243049;border-radius:10px;padding:15px;text-align:center}
+.eqs{font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;background:#161f33;border:1px solid #243049;border-radius:10px;padding:13px 15px}
+.note{font-size:12.5px;color:#8ea0c4;margin-top:11px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:8px 11px;text-align:right;border-bottom:1px solid #243049}
+th:first-child,td:first-child{text-align:left;color:#8ea0c4}
+thead th{color:#5f7196;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+tr.tot td{color:#e9eefb;font-weight:700;border-bottom:none;font-size:14.5px}
+tr.tot td:first-child{color:#4fd1c5}
+.flow{display:flex;gap:7px;margin-top:4px}
+.fi{flex:1 1 0;min-width:0;background:#111827;border:1px solid #243049;border-radius:12px;padding:14px 12px}
+.fi .n{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;background:#4fd1c5;color:#04231f;font-size:11px;font-weight:800;margin-bottom:8px}
+.fi p{font-size:12px;line-height:1.4}
+.fa{display:flex;align-items:center;color:#5f7196;font-size:16px}
+pre{font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;background:#0b1120;border:1px solid #243049;border-radius:11px;padding:14px 16px;color:#cfe0ff}
+pre .c{color:#5f7196}pre .f{color:#4fd1c5}pre .s{color:#f6ad55}
+ul.b{list-style:none}
+ul.b li{font-size:14.5px;line-height:1.5;color:#8ea0c4;padding-left:19px;position:relative;margin-bottom:12px}
+ul.b li:before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;border-radius:2px;background:#4fd1c5}
+ul.b li b{color:#e9eefb;font-weight:640}
+svg.d{width:100%;height:auto;display:block}
+.dh{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px}
+.db{display:grid;grid-template-columns:460px 1fr;gap:24px;flex:1 1 auto;min-height:0}
+#vg{width:460px;height:460px;display:block;border-radius:10px;background:#05080f;border:1px solid #243049}
+.vc{margin-top:9px;background:#161f33;border:1px solid #243049;border-left:3px solid #4fd1c5;border-radius:8px;padding:9px 12px;font-size:11.5px;line-height:1.45;color:#8ea0c4;min-height:54px}
+.vc b{color:#fff}
+.dr{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+.vk{background:#111827;border:1px solid #243049;border-radius:12px;padding:11px}
+.vk h5{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#5f7196;margin-bottom:8px;font-weight:700}
+.vr{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+.vr:last-child{margin-bottom:0}
+.vb{font:inherit;font-size:11.5px;color:#e9eefb;background:#161f33;border:1px solid #243049;border-radius:7px;padding:6px 9px;cursor:pointer;flex:1 1 auto;white-space:nowrap}
+.vb:hover{border-color:#3d5480}
+.vb.a{background:linear-gradient(180deg,#2dd4bf,#14b8a6);border-color:#2dd4bf;color:#04231f;font-weight:650}
+.vb.w{flex:1 1 100%}
+.vs{display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #1f2a42}
+.vs:last-of-type{border-bottom:none}
+.vs span:first-child{color:#8ea0c4}
+.vs span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.vbar{height:6px;border-radius:4px;background:#1b2540;overflow:hidden;margin-top:7px}
+.vbf{height:100%;background:linear-gradient(90deg,#2dd4bf,#f6ad55,#f87171)}
+.spd{align-items:center;gap:8px}
+.spd input{flex:1 1 auto}
+.spd .vv{font-size:11.5px;color:#e9eefb;min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:#1b2540;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#2dd4bf;border:1px solid #0f766e;box-shadow:0 0 0 3px rgba(45,212,191,.15)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#2dd4bf;border:1px solid #0f766e;box-shadow:0 0 0 3px rgba(45,212,191,.15)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:#1b2540}
+#bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:11px;z-index:9999;background:rgba(17,24,39,.95);border:1px solid #243049;border-radius:99px;padding:6px 9px 6px 15px;box-shadow:0 10px 30px rgba(0,0,0,.55)}
+#bar .tr{width:200px;height:4px;border-radius:2px;background:#182238;overflow:hidden}
+#bar .fl{height:100%;width:10%;background:linear-gradient(90deg,#4fd1c5,#7dd3fc);transition:width .22s}
+#bar .cn{font-size:12px;color:#5f7196;min-width:48px;text-align:center}
+#bar button{width:36px;height:36px;border-radius:50%;border:1px solid #243049;background:#161f33;color:#e9eefb;font-size:17px;cursor:pointer;display:grid;place-items:center;line-height:1}
+#bar button:hover{border-color:#3d5480;background:#1c2740}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="deck">
+
+<section class="slide on">
+  <div class="tw">
+    <div class="k">Basics of Parallelizing Simulations</div>
+    <h1>How Simulations<br>Run on Supercomputers</h1>
+    <div class="rule"></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">Why simulate</div>
+  <h2>No closed-form solutions &mdash; so we compute</h2>
+  <div class="g3">
+    <div class="card"><div class="tag">Navier&ndash;Stokes</div><h3>Fluids</h3><p>Weather, climate, turbulence. No general analytic solution.</p><div class="codes">ICON &middot; OpenFOAM</div></div>
+    <div class="card"><div class="tag">Newton, N &gt; 2</div><h3>Molecules &amp; materials</h3><p>Unsolvable in closed form beyond two bodies.</p><div class="codes">LAMMPS &middot; GROMACS</div></div>
+    <div class="card"><div class="tag">Schr&ouml;dinger &middot; QCD</div><h3>Electrons &amp; quarks</h3><p>Wavefunctions in 3N dimensions; strong coupling.</p><div class="codes">Chroma &middot; MILC</div></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">The pattern</div>
+  <h2>Five steps, repeating</h2>
+  <div class="flow">
+    <div class="fi"><span class="n">1</span><h4>Discretise</h4><p>Field &rarr; grid of numbers</p></div>
+    <div class="fa">&rarr;</div>
+    <div class="fi"><span class="n">2</span><h4>Decompose</h4><p>Distribute region across computers</p></div>
+    <div class="fa">&rarr;</div>
+    <div class="fi"><span class="n">3</span><h4>Compute</h4><p>Each computer works on its region</p></div>
+    <div class="fa">&rarr;</div>
+    <div class="fi"><span class="n">4</span><h4>Communicate</h4><p>Swap edge data between computers</p></div>
+    <div class="fa">&rarr;</div>
+    <div class="fi"><span class="n">5</span><h4>Repeat</h4><p>Thousands of steps</p></div>
+  </div>
+  <p class="punch">Steps 3 and 4 alternate forever.</p>
+</section>
+
+<section class="slide">
+  <div class="k">Step 1 &mdash; Discretise</div>
+  <h2>Replace calculus with arithmetic</h2>
+  <p class="note" style="margin:-8px 0 14px">Running example from here on: <b style="color:#e9eefb">heat spreading through a flat plate</b> &mdash; the field is temperature T.</p>
+  <div class="g2">
+    <div>
+      <div class="eq">&part;T/&part;t = &alpha;&nabla;&sup2;T</div>
+      <p class="note">&darr; finite differences on a grid of spacing h</p>
+      <div class="eqs">T&prime;[i,j] = T[i,j] + (&alpha;&Delta;t/h&sup2;) &middot;<br>&nbsp;&nbsp;(T[i+1,j]+T[i&minus;1,j]+T[i,j+1]+T[i,j&minus;1]&minus;4T[i,j])</div>
+      <p class="note">Five points per update: the cell and its four neighbours (the bracketed terms) &mdash; the <b style="color:#e9eefb">five-point stencil</b>. Stable only if &alpha;&Delta;t/h&sup2; &le; &frac14;.</p>
+    </div>
+    <div>
+      <table>
+        <thead><tr><th>Doubling resolution</th><th>2-D</th><th>3-D</th></tr></thead>
+        <tbody>
+          <tr><td>Grid points</td><td>N&sup2;</td><td>N&sup3;</td></tr>
+          <tr><td>Halve h</td><td>4&times;</td><td>8&times;</td></tr>
+          <tr><td>Timesteps needed</td><td>4&times;</td><td>4&times;</td></tr>
+          <tr class="tot"><td>Total work</td><td>16&times;</td><td>32&times;</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Each halving of the grid in 3-D costs 32&times; more work.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">The tool</div>
+  <h2>MPI in sixty seconds</h2>
+  <div class="g2">
+    <div>
+      <ul class="b">
+        <li>A supercomputer is <b>many separate machines</b> &mdash; no shared memory between them.</li>
+        <li><b>Message Passing Interface</b> &mdash; the standard since 1994.</li>
+        <li>You launch <b>P copies</b> of one program. Each is a <b>rank</b>.</li>
+        <li>Memory is <b>private</b>. No shared variables.</li>
+        <li>Data moves only via explicit <b>send</b> and <b>receive</b>.</li>
+      </ul>
+      <svg class="d" viewBox="0 0 560 150" style="margin-top:26px">
+        <defs>
+          <marker id="mt5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4fd1c5"/></marker>
+        </defs>
+        <rect x="20" y="30" width="160" height="90" rx="10" fill="#0b1120" stroke="#4C72B0" stroke-width="2"/>
+        <text x="100" y="72" fill="#7da7e8" text-anchor="middle" font-size="14" font-weight="700" font-family="-apple-system,sans-serif">Rank 0</text>
+        <text x="100" y="92" fill="#5f7196" text-anchor="middle" font-size="11" font-family="-apple-system,sans-serif">private memory</text>
+        <rect x="380" y="30" width="160" height="90" rx="10" fill="#0b1120" stroke="#DD8452" stroke-width="2"/>
+        <text x="460" y="72" fill="#e8a87d" text-anchor="middle" font-size="14" font-weight="700" font-family="-apple-system,sans-serif">Rank 1</text>
+        <text x="460" y="92" fill="#5f7196" text-anchor="middle" font-size="11" font-family="-apple-system,sans-serif">private memory</text>
+        <line x1="185" y1="55" x2="234" y2="55" stroke="#4fd1c5" stroke-width="3"/>
+        <line x1="326" y1="55" x2="374" y2="55" stroke="#4fd1c5" stroke-width="3" marker-end="url(#mt5)"/>
+        <rect x="240" y="38" width="80" height="34" rx="7" fill="#161f33" stroke="#4fd1c5" stroke-width="1.5"/>
+        <text x="280" y="60" fill="#4fd1c5" text-anchor="middle" font-size="12" font-family="ui-monospace,Menlo,monospace">message</text>
+        <text x="212" y="88" fill="#4fd1c5" text-anchor="middle" font-size="11" font-family="ui-monospace,Menlo,monospace">MPI_Send(...)</text>
+        <text x="352" y="88" fill="#4fd1c5" text-anchor="middle" font-size="11" font-family="ui-monospace,Menlo,monospace">MPI_Recv(...)</text>
+        <text x="280" y="132" fill="#5f7196" text-anchor="middle" font-size="12" font-family="-apple-system,sans-serif">no shared memory &mdash; data moves only as explicit messages</text>
+      </svg>
+    </div>
+    <div>
+<pre><span class="c">/* every rank runs this */</span>
+<span class="f">MPI_Init</span>(&amp;argc,&amp;argv);
+<span class="f">MPI_Comm_rank</span>(COMM,&amp;rank);
+<span class="f">MPI_Comm_size</span>(COMM,&amp;size);
+
+<span class="c">/* rank 0 sends first: avoids deadlock */</span>
+<span class="f">if</span> (rank == <span class="s">0</span>) {
+  <span class="f">MPI_Send</span>(edge,n,MPI_DOUBLE,
+           <span class="s">1</span>,<span class="s">0</span>,COMM);
+  <span class="f">MPI_Recv</span>(ghost,n,MPI_DOUBLE,
+           <span class="s">1</span>,<span class="s">0</span>,COMM,&amp;st);
+} <span class="f">else</span> {
+  <span class="f">MPI_Recv</span>(ghost,n,MPI_DOUBLE,
+           <span class="s">0</span>,<span class="s">0</span>,COMM,&amp;st);
+  <span class="f">MPI_Send</span>(edge,n,MPI_DOUBLE,
+           <span class="s">0</span>,<span class="s">0</span>,COMM);
+}
+
+<span class="f">MPI_Finalize</span>();</pre>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">Step 2 &mdash; Decompose</div>
+  <h2>Distribute the region across computers</h2>
+  <div style="display:flex;flex:1 1 auto;align-items:center;justify-content:center">
+    <svg class="d" viewBox="0 0 484 404" style="max-width:700px">
+      <defs>
+        <pattern id="cellp" width="24" height="24" patternUnits="userSpaceOnUse">
+          <rect width="24" height="24" fill="#141d33"/>
+          <path d="M24 0H0V24" fill="none" stroke="#2c3d61" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <g transform="translate(10,12)">
+        <rect width="212" height="164" rx="10" fill="#0b1120" stroke="#4C72B0" stroke-width="2"/>
+        <text x="12" y="25" fill="#7da7e8" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Computer 0</text>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="url(#cellp)"/>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="rgba(76,114,176,.16)"/>
+      </g>
+      <g transform="translate(262,12)">
+        <rect width="212" height="164" rx="10" fill="#0b1120" stroke="#DD8452" stroke-width="2"/>
+        <text x="12" y="25" fill="#e8a87d" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Computer 1</text>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="url(#cellp)"/>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="rgba(221,132,82,.16)"/>
+      </g>
+      <g transform="translate(10,212)">
+        <rect width="212" height="164" rx="10" fill="#0b1120" stroke="#55A868" stroke-width="2"/>
+        <text x="12" y="25" fill="#7dc79b" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Computer 2</text>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="url(#cellp)"/>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="rgba(85,168,104,.16)"/>
+      </g>
+      <g transform="translate(262,212)">
+        <rect width="212" height="164" rx="10" fill="#0b1120" stroke="#C44E52" stroke-width="2"/>
+        <text x="12" y="25" fill="#d98a8d" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Computer 3</text>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="url(#cellp)"/>
+        <rect x="10" y="36" width="192" height="120" rx="4" fill="rgba(196,78,82,.16)"/>
+      </g>
+      <text x="242" y="398" fill="#5f7196" text-anchor="middle" font-size="12" font-family="-apple-system,sans-serif">the simulation region, one part per computer &middot; parts only meet at their edges</text>
+    </svg>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">Step 4 &mdash; Communicate</div>
+  <h2>Halo exchange: the only conversation in the program</h2>
+  <div style="display:flex;flex:1 1 auto;align-items:center;justify-content:center">
+    <svg class="d" viewBox="0 0 560 180" style="max-width:860px">
+      <defs>
+        <pattern id="hc7" width="20" height="20" patternUnits="userSpaceOnUse">
+          <rect width="20" height="20" fill="#141d33"/>
+          <path d="M20 0H0V20" fill="none" stroke="#2c3d61" stroke-width="1"/>
+        </pattern>
+        <marker id="mt7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4fd1c5"/></marker>
+        <marker id="ma7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#f6ad55"/></marker>
+      </defs>
+      <g>
+        <rect x="10" y="26" width="180" height="124" rx="10" fill="#0b1120" stroke="#4C72B0" stroke-width="2"/>
+        <text x="22" y="47" fill="#7da7e8" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Rank 0</text>
+        <rect x="28" y="58" width="80" height="80" rx="2" fill="url(#hc7)"/>
+        <rect x="28" y="58" width="80" height="80" rx="2" fill="rgba(76,114,176,.14)"/>
+        <rect x="108" y="58" width="20" height="80" rx="2" fill="rgba(79,209,197,.30)"/>
+        <rect x="128" y="58" width="20" height="80" rx="2" fill="#0b1120" stroke="#7dd3fc" stroke-dasharray="4 3"/>
+      </g>
+      <g>
+        <rect x="370" y="26" width="180" height="124" rx="10" fill="#0b1120" stroke="#DD8452" stroke-width="2"/>
+        <text x="382" y="47" fill="#e8a87d" font-size="13" font-weight="700" font-family="-apple-system,sans-serif">Rank 1</text>
+        <rect x="388" y="58" width="20" height="80" rx="2" fill="#0b1120" stroke="#7dd3fc" stroke-dasharray="4 3"/>
+        <rect x="408" y="58" width="20" height="80" rx="2" fill="rgba(246,173,85,.30)"/>
+        <rect x="428" y="58" width="80" height="80" rx="2" fill="url(#hc7)"/>
+        <rect x="428" y="58" width="80" height="80" rx="2" fill="rgba(221,132,82,.14)"/>
+      </g>
+      <text x="254" y="64" fill="#4fd1c5" text-anchor="middle" font-size="11" font-family="-apple-system,sans-serif">east edge &rarr; Rank 1&rsquo;s halo</text>
+      <line x1="118" y1="78" x2="392" y2="78" stroke="#4fd1c5" stroke-width="3" marker-end="url(#mt7)"/>
+      <text x="282" y="108" fill="#f6ad55" text-anchor="middle" font-size="11" font-family="-apple-system,sans-serif">west edge &rarr; Rank 0&rsquo;s halo</text>
+      <line x1="418" y1="122" x2="142" y2="122" stroke="#f6ad55" stroke-width="3" marker-end="url(#ma7)"/>
+      <text x="280" y="170" fill="#5f7196" text-anchor="middle" font-size="12" font-family="-apple-system,sans-serif">dashed column = halo (ghost) cells &middot; each rank&rsquo;s halo is filled from its neighbour&rsquo;s edge</text>
+    </svg>
+  </div>
+  <ul class="b" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <li>Each rank needs <b>one layer</b> of neighbour data to evaluate the stencil at its own edge.</li>
+    <li>Only <b>2&ndash;4 messages per rank per step</b> &mdash; interior ranks send four, boundary ranks fewer.</li>
+  </ul>
+  <div class="eqs">comm &prop; perimeter &nbsp;&middot;&nbsp; compute &prop; area</div>
+</section>
+
+<section class="slide" data-demo="1">
+  <div class="dh">
+    <div><div class="k">Steps 3&ndash;5, live</div><h2 style="margin-bottom:0;font-size:26px">The heat plate: one timestep, three phases</h2></div>
+    <div style="font-size:11.5px;color:#5f7196">buttons drive the simulation</div>
+  </div>
+  <div class="db">
+    <div>
+      <canvas id="vg"></canvas>
+      <div class="vc" id="vc"></div>
+    </div>
+    <div class="dr">
+      <div class="vk">
+        <h5>Transport</h5>
+        <div class="vr"><button class="vb w" id="vplay">&#9208; Pause</button></div>
+        <div class="vr"><button class="vb" id="vstep">&#9656; Next phase</button><button class="vb" id="vres">&#8635; Reset</button></div>
+        <div class="vr spd"><input type="range" id="vspd" min="0.25" max="6" step="0.25" value="2" aria-label="Simulation speed"><span class="vv" id="vspdv">2&times;</span></div>
+      </div>
+      <div class="vk">
+        <h5>Colour cells by</h5>
+        <div class="vr"><button class="vb a" data-view="temp">Temperature</button><button class="vb" data-view="halo">Halo emphasis</button></div>
+        <h5 style="margin-top:10px">Decomposition</h5>
+        <div class="vr">
+          <button class="vb" data-px="1" data-py="1">1&times;1</button>
+          <button class="vb a" data-px="2" data-py="2">2&times;2</button>
+          <button class="vb" data-px="4" data-py="2">4&times;2</button>
+          <button class="vb" data-px="4" data-py="4">4&times;4</button>
+        </div>
+        <div class="vr">
+          <button class="vb" data-n="16">16&sup2;</button>
+          <button class="vb a" data-n="32">32&sup2;</button>
+          <button class="vb" data-n="64">64&sup2;</button>
+        </div>
+      </div>
+      <div class="vk" style="grid-column:1/-1">
+        <h5>Per-rank cost</h5>
+        <div class="vs"><span>Timestep</span><span id="vstepn">0</span></div>
+        <div class="vs"><span>Interior cells</span><span id="vcells">&mdash;</span></div>
+        <div class="vs"><span>Exchanged cells / rank / step</span><span id="vhalo">&mdash;</span></div>
+        <div class="vs"><span>MPI messages / rank / step</span><span id="vmsg">&mdash;</span></div>
+        <div class="vs"><span>Exchanged &divide; interior</span><span id="vratio">&mdash;</span></div>
+        <div class="vbar"><div class="vbf" id="vbarf" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">Does it scale?</div>
+  <h2>Adding computers helps &mdash; up to a point</h2>
+  <div class="g2">
+    <div>
+      <table>
+        <thead><tr><th>32&sup2; grid</th><th>Cells / computer</th><th>Exchanged</th><th>Overhead</th></tr></thead>
+        <tbody>
+          <tr><td>1 &times; 1</td><td>1024</td><td>0</td><td>0 %</td></tr>
+          <tr><td>2 &times; 2</td><td>256</td><td>32</td><td>12.5 %</td></tr>
+          <tr><td>4 &times; 2</td><td>128</td><td>32</td><td>25 %</td></tr>
+          <tr class="tot"><td>4 &times; 4</td><td>64</td><td>24</td><td>37.5 %</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Smaller regions mean proportionally more edge. Past some point, each computer spends more time talking than computing.</p>
+    </div>
+    <div>
+      <ul class="b">
+        <li><b>More computers, same problem</b> &mdash; regions shrink, edges don't. Gains flatten.</li>
+        <li><b>More computers, bigger problem</b> &mdash; regions stay the same size. Keeps working.</li>
+        <li>Each message is tiny &mdash; at large counts you pay for the <b>waiting</b>, not the data.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="k">Summary</div>
+  <h2>Three things to take away</h2>
+  <div class="g3">
+    <div class="card" style="border-top:3px solid #4fd1c5"><h3>Grid decomposition</h3><p>Cut the simulation region into parts, one per computer &mdash; parts only meet at their edges.</p></div>
+    <div class="card" style="border-top:3px solid #f6ad55"><h3>Adding computers helps</h3><p>Speed up the same problem, or fit a bigger one across more computers.</p></div>
+    <div class="card" style="border-top:3px solid #a78bfa"><h3>Communication overhead</h3><p>Sending messages takes time, and the share grows as computers are added &mdash; speedup is not always ideal.</p></div>
+  </div>
+  <p class="punch">Next step: write it yourself. A 2-D heat solver in Python with <b style="color:#e9eefb">mpi4py</b> is about forty lines.</p>
+</section>
+
+</div>
+</div>
+
+<div id="bar">
+  <div class="tr"><div class="fl" id="fl"></div></div>
+  <div class="cn" id="cn">1 / 10</div>
+  <button id="pb">&#8249;</button>
+  <button id="nb">&#8250;</button>
+</div>
+
+<script>
+(function(){
+  var deck=document.getElementById("deck"),sl=document.querySelectorAll(".slide"),
+      fl=document.getElementById("fl"),cn=document.getElementById("cn"),i=0;
+  window.__vzOn=false;
+  function fit(){deck.style.transform="scale("+Math.min(window.innerWidth/1280,window.innerHeight/720)+")";}
+  window.addEventListener("resize",fit);fit();
+  function go(n){
+    if(n<0)n=0; if(n>sl.length-1)n=sl.length-1; i=n;
+    for(var j=0;j<sl.length;j++){ sl[j].className="slide"+(j===i?" on":""); }
+    fl.style.width=(((i+1)/sl.length)*100).toFixed(1)+"%";
+    cn.textContent=(i+1)+" / "+sl.length;
+    window.__vzOn=(sl[i].getAttribute("data-demo")==="1");
+  }
+  document.getElementById("pb").onclick=function(){go(i-1);};
+  document.getElementById("nb").onclick=function(){go(i+1);};
+  function key(e){
+    if(e.target&&e.target.tagName==="INPUT")return;
+    if(e.key==="ArrowRight"||e.key==="PageDown"||e.keyCode===32){e.preventDefault();go(i+1);}
+    else if(e.key==="ArrowLeft"||e.key==="PageUp"){e.preventDefault();go(i-1);}
+    else if(e.key==="Home"){e.preventDefault();go(0);}
+    else if(e.key==="End"){e.preventDefault();go(sl.length-1);}
+  }
+  document.addEventListener("keydown",key,false);
+  document.getElementById("stage").addEventListener("click",function(e){
+    var t=e.target;
+    if(t.closest&&t.closest("button,input,canvas,pre,svg,.vk"))return;
+    go(i+1);
+  });
+  var sx=null;
+  document.addEventListener("touchstart",function(e){sx=e.touches[0].clientX;},{passive:true});
+  document.addEventListener("touchend",function(e){
+    if(e.target&&e.target.tagName==="INPUT"){sx=null;return;}
+    if(sx===null)return; var dx=e.changedTouches[0].clientX-sx;
+    if(Math.abs(dx)>45){ go(dx<0?i+1:i-1); } sx=null;
+  },{passive:true});
+  window.focus();
+  go(0);
+})();
+</script>
+
+<script>
+(function(){
+var CW=740,CH=740,CYC=800;
+var RC=["#4C72B0","#DD8452","#55A868","#C44E52","#8172B3","#937860","#DA8BC3","#8C8C8C","#CCB974","#64B5CD","#B07AA1","#76B7B2","#EDC948","#59A14F","#FF9DA7","#9C755F"];
+var RR=RC.map(function(h){return[parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]});
+var IF=[[0,[0,0,4]],[.13,[31,12,72]],[.25,[85,15,109]],[.38,[136,34,106]],[.5,[187,55,84]],[.63,[227,89,51]],[.75,[249,140,10]],[.88,[249,201,50]],[1,[252,255,164]]];
+function inf(t){
+  if(t<0)t=0; if(t>1)t=1;
+  for(var k=0;k<8;k++){
+    var a=IF[k][0],ca=IF[k][1],b=IF[k+1][0],cb=IF[k+1][1];
+    if(t<=b){var f=(t-a)/(b-a);
+      return[ca[0]+(cb[0]-ca[0])*f,ca[1]+(cb[1]-ca[1])*f,ca[2]+(cb[2]-ca[2])*f];}
+  }
+  return IF[8][1];
+}
+function mk(s){return function(){s|=0;s=s+0x6D2B79F5|0;var t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function sh(c,f){return"rgb("+((c[0]*f)|0)+","+((c[1]*f)|0)+","+((c[2]*f)|0)+")"}
+function cl(x){return x<0?0:(x>1?1:x)}
+
+var cv=document.getElementById("vg"),ctx=cv.getContext("2d");
+cv.width=CW;cv.height=CH;
+var eCap=document.getElementById("vc"),ePlay=document.getElementById("vplay"),
+    eStep=document.getElementById("vstep"),eRes=document.getElementById("vres"),
+    eSpd=document.getElementById("vspd"),eSpdV=document.getElementById("vspdv"),eStepN=document.getElementById("vstep"),
+    eS=document.getElementById("vstepn"),eC=document.getElementById("vcells"),
+    eH=document.getElementById("vhalo"),eM=document.getElementById("vmsg"),
+    eR=document.getElementById("vratio"),eB=document.getElementById("vbarf");
+
+var CAP=[
+ "<b>Phase 1 \u2014 Halo exchange, horizontal.</b> Each rank packs its east and west interior edge columns and ships them across the gap into the neighbour's halo.",
+ "<b>Phase 2 \u2014 Halo exchange, vertical.</b> Same for the north and south edge rows. Two to four messages per rank per step \u2014 boundary ranks have fewer.",
+ "<b>Phase 3 \u2014 Stencil update.</b> Every interior cell averages itself with its four neighbours, reading the freshly received halo values."
+];
+var CAP1="<b>Single rank \u2014 no decomposition.</b> One process owns the whole plate, so there are no neighbours and nothing to exchange.";
+
+var S={N:32,px:2,py:2,al:.24,run:1,spd:2,view:"temp",step:0,ph:0,pr:0,seed:12345,R:[],lx:0,ly:0};
+
+function lay(){
+  var g=12,bw=S.lx+2,bh=S.ly+2;
+  var cs=Math.min((CW-(S.px+1)*g)/(S.px*bw),(CH-(S.py+1)*g)/(S.py*bh));
+  if(cs>36)cs=36;
+  var tw=S.px*bw*cs+(S.px-1)*g, th=S.py*bh*cs+(S.py-1)*g;
+  return{cs:cs,g:g,bw:bw,bh:bh,ox:(CW-tw)/2,oy:(CH-th)/2};
+}
+function org(R,L){return{x:L.ox+R.rx*(L.bw*L.cs+L.g),y:L.oy+R.ry*(L.bh*L.cs+L.g)}}
+
+function setup(ns){
+  var N=S.N,px=S.px,py=S.py;
+  S.lx=N/px; S.ly=N/py;
+  var lx=S.lx,ly=S.ly,WX=lx+2,WY=ly+2;
+  if(ns)S.seed=(Math.random()*1e9)|0;
+  var rn=mk(S.seed),f=new Float32Array(N*N),k;
+  for(k=0;k<N*N;k++)f[k]=.12+.62*rn();
+  var sp=[{x:N*.3,y:N*.32,s:N/9,a:.95},{x:N*.72,y:N*.68,s:N/11,a:.8}];
+  for(var q=0;q<2;q++){var o=sp[q];
+    for(var gy=0;gy<N;gy++)for(var gx=0;gx<N;gx++){
+      var d2=(gx-o.x)*(gx-o.x)+(gy-o.y)*(gy-o.y);
+      var v=f[gy*N+gx]+o.a*Math.exp(-d2/(2*o.s*o.s));
+      f[gy*N+gx]=v>1?1:v;
+    }}
+  S.R=[];
+  for(var ry=0;ry<py;ry++)for(var rx=0;rx<px;rx++){
+    var T=new Float32Array(WX*WY),Tn=new Float32Array(WX*WY);
+    for(var j=1;j<=ly;j++)for(var i=1;i<=lx;i++)
+      T[j*WX+i]=f[(ry*ly+j-1)*N+(rx*lx+i-1)];
+    S.R.push({rx:rx,ry:ry,r:ry*px+rx,T:T,Tn:Tn});
+  }
+  S.step=0;S.ph=0;S.pr=0;
+  fh();fv();stats();cap();draw();
+}
+function nb(rx,ry,dx,dy){
+  var nx=rx+dx,ny=ry+dy;
+  if(nx<0||nx>=S.px||ny<0||ny>=S.py)return null;
+  return S.R[ny*S.px+nx];
+}
+function fh(){
+  var lx=S.lx,ly=S.ly,W=lx+2;
+  for(var n=0;n<S.R.length;n++){
+    var R=S.R[n],L=nb(R.rx,R.ry,-1,0),Rt=nb(R.rx,R.ry,1,0);
+    for(var j=1;j<=ly;j++){
+      R.T[j*W]=L?L.T[j*W+lx]:0;
+      R.T[j*W+lx+1]=Rt?Rt.T[j*W+1]:0;
+    }
+  }
+}
+function fv(){
+  var lx=S.lx,ly=S.ly,W=lx+2;
+  for(var n=0;n<S.R.length;n++){
+    var R=S.R[n],D=nb(R.rx,R.ry,0,-1),U=nb(R.rx,R.ry,0,1);
+    for(var i=1;i<=lx;i++){
+      R.T[i]=D?D.T[ly*W+i]:0;
+      R.T[(ly+1)*W+i]=U?U.T[W+i]:0;
+    }
+  }
+}
+function st(){
+  var lx=S.lx,ly=S.ly,W=lx+2,a=S.al;
+  for(var n=0;n<S.R.length;n++){
+    var R=S.R[n],T=R.T,Tn=R.Tn;
+    Tn.set(T);
+    for(var j=1;j<=ly;j++){var b=j*W;
+      for(var i=1;i<=lx;i++){var k=b+i;
+        Tn[k]=T[k]+a*(T[k-1]+T[k+1]+T[k-W]+T[k+W]-4*T[k]);}}
+    R.T=Tn;R.Tn=T;
+  }
+}
+function phase(p){
+  if(p===0)fh(); else if(p===1)fv(); else {st();S.step++;}
+  cap();stats();
+}
+function srcOf(R,i,j){
+  var lx=S.lx,ly=S.ly,N;
+  if(i===0&&j>=1&&j<=ly){N=nb(R.rx,R.ry,-1,0);return N?N.r:-1;}
+  if(i===lx+1&&j>=1&&j<=ly){N=nb(R.rx,R.ry,1,0);return N?N.r:-1;}
+  if(j===0&&i>=1&&i<=lx){N=nb(R.rx,R.ry,0,-1);return N?N.r:-1;}
+  if(j===ly+1&&i>=1&&i<=lx){N=nb(R.rx,R.ry,0,1);return N?N.r:-1;}
+  return -1;
+}
+function cc(v,kind,own,src){
+  var c,r,g,b,t,f,rc;
+  if(kind===2)return"#0d1420";
+  if(S.view==="temp"){
+    c=inf(v);r=c[0];g=c[1];b=c[2];
+    if(kind===1){t=.5;r=r*(1-t)+34*t;g=g*(1-t)+56*t;b=b*(1-t)+96*t;}
+    return"rgb("+(r|0)+","+(g|0)+","+(b|0)+")";
+  }
+  if(kind===0){rc=RR[own%16];return sh(rc,.30);}
+  if(src<0)return"#070c14";
+  rc=RR[src%16];f=.72+.28*cl(v);return sh(rc,f);
+}
+function draw(){
+  var lx=S.lx,ly=S.ly,WX=lx+2,WY=ly+2,L=lay(),cs=L.cs;
+  ctx.clearRect(0,0,CW,CH);
+  var n,R,o,i,j,xs,ys,kind,src,col;
+  for(n=0;n<S.R.length;n++){
+    R=S.R[n];o=org(R,L);xs=[];ys=[];
+    for(i=0;i<=WX;i++)xs.push(Math.round(o.x+i*cs));
+    for(j=0;j<=WY;j++)ys.push(Math.round(o.y+j*cs));
+    for(j=0;j<WY;j++)for(i=0;i<WX;i++){
+      if((i===0||i===lx+1)&&(j===0||j===ly+1)){kind=2;src=-1;}
+      else if(i===0||i===lx+1||j===0||j===ly+1){kind=1;src=srcOf(R,i,j);}
+      else{kind=0;src=-1;}
+      ctx.fillStyle=cc(R.T[j*WX+i],kind,R.r,src);
+      ctx.fillRect(xs[i],ys[j],xs[i+1]-xs[i],ys[j+1]-ys[j]);
+    }
+  }
+  if(cs>=8){
+    ctx.strokeStyle="rgba(0,0,0,.3)";ctx.lineWidth=1;ctx.beginPath();
+    for(n=0;n<S.R.length;n++){
+      R=S.R[n];o=org(R,L);
+      for(i=0;i<=WX;i++){var qx=Math.round(o.x+i*cs)+.5;
+        ctx.moveTo(qx,Math.round(o.y)+.5);ctx.lineTo(qx,Math.round(o.y+WY*cs)+.5);}
+      for(j=0;j<=WY;j++){var qy=Math.round(o.y+j*cs)+.5;
+        ctx.moveTo(Math.round(o.x)+.5,qy);ctx.lineTo(Math.round(o.x+WX*cs)+.5,qy);}
+    }
+    ctx.stroke();
+  }
+  for(n=0;n<S.R.length;n++){
+    R=S.R[n];o=org(R,L);
+    ctx.strokeStyle="rgba(255,255,255,.6)";ctx.lineWidth=1.5;
+    ctx.strokeRect(Math.round(o.x+cs)+.75,Math.round(o.y+cs)+.75,Math.round(lx*cs)-1.5,Math.round(ly*cs)-1.5);
+    ctx.setLineDash([6,4]);ctx.strokeStyle="rgba(125,211,252,.9)";ctx.lineWidth=1.6;
+    ctx.strokeRect(Math.round(o.x)+.8,Math.round(o.y)+.8,Math.round(WX*cs)-1.6,Math.round(WY*cs)-1.6);
+    ctx.setLineDash([]);
+    ctx.strokeStyle="rgba(148,163,184,.95)";ctx.lineWidth=3;ctx.beginPath();
+    if(!nb(R.rx,R.ry,-1,0)){ctx.moveTo(Math.round(o.x)+1.5,Math.round(o.y));ctx.lineTo(Math.round(o.x)+1.5,Math.round(o.y+WY*cs));}
+    if(!nb(R.rx,R.ry,1,0)){var ex=Math.round(o.x+WX*cs)-1.5;ctx.moveTo(ex,Math.round(o.y));ctx.lineTo(ex,Math.round(o.y+WY*cs));}
+    if(!nb(R.rx,R.ry,0,-1)){ctx.moveTo(Math.round(o.x),Math.round(o.y)+1.5);ctx.lineTo(Math.round(o.x+WX*cs),Math.round(o.y)+1.5);}
+    if(!nb(R.rx,R.ry,0,1)){var ey=Math.round(o.y+WY*cs)-1.5;ctx.moveTo(Math.round(o.x),ey);ctx.lineTo(Math.round(o.x+WX*cs),ey);}
+    ctx.stroke();
+  }
+  if(S.ph===0||S.ph===1)exch(L,.55+.45*Math.sin(Math.PI*S.pr));
+  if(S.ph===2){
+    var pu=.5+.5*Math.sin(Math.PI*S.pr);
+    ctx.fillStyle="rgba(255,255,255,"+(.05+.11*pu)+")";
+    for(n=0;n<S.R.length;n++){R=S.R[n];o=org(R,L);
+      ctx.fillRect(Math.round(o.x+cs),Math.round(o.y+cs),Math.round(lx*cs),Math.round(ly*cs));}
+  }
+  if(S.px*S.py>1&&lx*cs>62&&ly*cs>40){
+    var fs=Math.max(11,Math.min(24,cs*lx*.19));
+    ctx.font="700 "+fs.toFixed(0)+"px ui-monospace,Menlo,monospace";
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    for(n=0;n<S.R.length;n++){
+      R=S.R[n];o=org(R,L);
+      var cx=o.x+cs+lx*cs/2,cy=o.y+cs+ly*cs/2,lb="R"+R.r;
+      ctx.lineWidth=3.5;ctx.strokeStyle="rgba(0,0,0,.82)";ctx.strokeText(lb,cx,cy);
+      ctx.fillStyle="rgba(255,255,255,.97)";ctx.fillText(lb,cx,cy);
+    }
+  }
+}
+function exch(L,a){
+  var cs=L.cs,lx=S.lx,ly=S.ly,T="45,212,191",A="251,191,36";
+  var ry,rx,Aa,Bb,oa,ob,yT,hI,xL,wI;
+  if(S.ph===0){
+    for(ry=0;ry<S.py;ry++)for(rx=0;rx<S.px-1;rx++){
+      Aa=S.R[ry*S.px+rx];Bb=S.R[ry*S.px+rx+1];
+      oa=org(Aa,L);ob=org(Bb,L);yT=oa.y+cs;hI=ly*cs;
+      ctx.fillStyle="rgba("+T+","+(.8*a)+")";
+      ctx.fillRect(Math.round(oa.x+lx*cs),Math.round(yT),Math.round(cs),Math.round(hI));
+      ctx.fillRect(Math.round(ob.x),Math.round(yT),Math.round(cs),Math.round(hI));
+      arw(oa.x+(lx+.5)*cs,yT+hI*.34,ob.x+.5*cs,yT+hI*.34,"rgba("+T+","+a+")");
+      ctx.fillStyle="rgba("+A+","+(.8*a)+")";
+      ctx.fillRect(Math.round(ob.x+cs),Math.round(yT),Math.round(cs),Math.round(hI));
+      ctx.fillRect(Math.round(oa.x+(lx+1)*cs),Math.round(yT),Math.round(cs),Math.round(hI));
+      arw(ob.x+1.5*cs,yT+hI*.68,oa.x+(lx+1.5)*cs,yT+hI*.68,"rgba("+A+","+a+")");
+    }
+  } else {
+    for(ry=0;ry<S.py-1;ry++)for(rx=0;rx<S.px;rx++){
+      Aa=S.R[ry*S.px+rx];Bb=S.R[(ry+1)*S.px+rx];
+      oa=org(Aa,L);ob=org(Bb,L);xL=oa.x+cs;wI=lx*cs;
+      ctx.fillStyle="rgba("+T+","+(.8*a)+")";
+      ctx.fillRect(Math.round(xL),Math.round(oa.y+ly*cs),Math.round(wI),Math.round(cs));
+      ctx.fillRect(Math.round(xL),Math.round(ob.y),Math.round(wI),Math.round(cs));
+      arw(xL+wI*.34,oa.y+(ly+.5)*cs,xL+wI*.34,ob.y+.5*cs,"rgba("+T+","+a+")");
+      ctx.fillStyle="rgba("+A+","+(.8*a)+")";
+      ctx.fillRect(Math.round(xL),Math.round(ob.y+cs),Math.round(wI),Math.round(cs));
+      ctx.fillRect(Math.round(xL),Math.round(oa.y+(ly+1)*cs),Math.round(wI),Math.round(cs));
+      arw(xL+wI*.68,ob.y+1.5*cs,xL+wI*.68,oa.y+(ly+1.5)*cs,"rgba("+A+","+a+")");
+    }
+  }
+}
+function arw(x1,y1,x2,y2,c,w){
+  var an=Math.atan2(y2-y1,x2-x1),h=12;
+  if(!w)w=4;
+  var ex=x2-Math.cos(an)*h*.7, ey=y2-Math.sin(an)*h*.7;
+  ctx.lineCap="round";
+  ctx.strokeStyle="rgba(3,6,12,.6)";ctx.fillStyle="rgba(3,6,12,.6)";ctx.lineWidth=w+3.5;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(ex,ey);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-Math.cos(an-.45)*(h+3),y2-Math.sin(an-.45)*(h+3));
+  ctx.lineTo(x2-Math.cos(an+.45)*(h+3),y2-Math.sin(an+.45)*(h+3));
+  ctx.closePath();ctx.fill();
+  ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=w;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(ex,ey);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-Math.cos(an-.45)*h,y2-Math.sin(an-.45)*h);
+  ctx.lineTo(x2-Math.cos(an+.45)*h,y2-Math.sin(an+.45)*h);
+  ctx.closePath();ctx.fill();
+}
+function cap(){
+  if(S.px*S.py===1){eCap.innerHTML=CAP1;eCap.style.borderLeftColor="#64748b";return;}
+  eCap.innerHTML=CAP[S.ph];
+  eCap.style.borderLeftColor=S.ph===0?"#4fd1c5":(S.ph===1?"#f6ad55":"#a78bfa");
+}
+function stats(){
+  var lx=S.lx,ly=S.ly,px=S.px,py=S.py,inr=lx*ly,ex=0,ms=0,emn=1e9,emx=0,mmn=1e9,mmx=0,n,R,e,m;
+  for(n=0;n<S.R.length;n++){
+    R=S.R[n];e=0;m=0;
+    if(R.rx>0){e+=ly;m++;}
+    if(R.rx<px-1){e+=ly;m++;}
+    if(R.ry>0){e+=lx;m++;}
+    if(R.ry<py-1){e+=lx;m++;}
+    ex+=e;ms+=m;
+    if(e<emn)emn=e; if(e>emx)emx=e;
+    if(m<mmn)mmn=m; if(m>mmx)mmx=m;
+  }
+  var nr=S.R.length||1, pr=ex/nr, mr=ms/nr;
+  var ra=inr>0?100*pr/inr:0;
+  function fx(x){return x%1?x.toFixed(1):x.toFixed(0)}
+  eS.textContent=S.step;
+  eC.textContent=lx+" \u00D7 "+ly+" = "+inr;
+  eH.textContent=(emn===emx?fx(pr):fx(pr)+" avg ("+emn+"\u2013"+emx+")")+" cells";
+  eM.textContent=mmn===mmx?fx(mr):fx(mr)+" avg ("+mmn+"\u2013"+mmx+")";
+  eR.textContent=ra.toFixed(1)+" %";
+  eB.style.width=Math.min(100,ra*1.6)+"%";
+}
+var last=performance.now();
+function loop(t){
+  var dt=t-last; if(dt>80)dt=80; last=t;
+  if(window.__vzOn){
+    if(S.run){S.pr+=dt*S.spd/CYC;
+      while(S.pr>=1){S.pr-=1;S.ph=(S.ph+1)%3;phase(S.ph);}}
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+document.getElementById("vplay").onclick=function(){
+  S.run=!S.run; this.innerHTML=S.run?"\u23F8 Pause":"\u25B6 Play";
+};
+document.getElementById("vstep").onclick=function(){
+  S.run=0; document.getElementById("vplay").innerHTML="\u25B6 Play";
+  S.pr=0; S.ph=(S.ph+1)%3; phase(S.ph);
+};
+document.getElementById("vres").onclick=function(){setup(1);};
+eSpd.addEventListener("input",function(){
+  S.spd=parseFloat(this.value);
+  eSpdV.textContent=S.spd.toFixed(2).replace(/0+$/,"").replace(/\.$/,"")+"\u00D7";
+});
+var vb=document.querySelectorAll("[data-view]");
+for(var vi=0;vi<vb.length;vi++){(function(b){
+  b.onclick=function(){
+    for(var k=0;k<vb.length;k++)vb[k].className="vb";
+    b.className="vb a"; S.view=b.getAttribute("data-view");
+  };
+})(vb[vi]);}
+var db=document.querySelectorAll("[data-px]");
+for(var di=0;di<db.length;di++){(function(b){
+  b.onclick=function(){
+    for(var k=0;k<db.length;k++)db[k].className="vb";
+    b.className="vb a";
+    S.px=parseInt(b.getAttribute("data-px"),10);
+    S.py=parseInt(b.getAttribute("data-py"),10);
+    setup(0);
+  };
+})(db[di]);}
+var nb2=document.querySelectorAll("[data-n]");
+for(var ni=0;ni<nb2.length;ni++){(function(b){
+  b.onclick=function(){
+    for(var k=0;k<nb2.length;k++)nb2[k].className="vb";
+    b.className="vb a";
+    S.N=parseInt(b.getAttribute("data-n"),10);
+    setup(0);
+  };
+})(nb2[ni]);}
+setup(0);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
